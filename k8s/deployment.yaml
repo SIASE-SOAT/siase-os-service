@@ -2,10 +2,8 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: siase-os-service
-  namespace: siase
   labels:
     app: siase-os-service
-    version: "1.0.0"
 spec:
   replicas: 2
   selector:
@@ -17,75 +15,59 @@ spec:
         app: siase-os-service
       annotations:
         prometheus.io/scrape: "true"
-        prometheus.io/port: "8091"
+        prometheus.io/port: "8081"
         prometheus.io/path: "/actuator/prometheus"
     spec:
+      serviceAccountName: siase-os-service   # IRSA: policy siase-<env>-os-service-messaging
       containers:
         - name: siase-os-service
-          image: ECR_REGISTRY/ECR_REPOSITORY:IMAGE_TAG
+          image: ghcr.io/siase-soat/siase-os-service:latest
           ports:
             - containerPort: 8081
-              name: http
-            - containerPort: 8091
-              name: management
-          envFrom:
-            - configMapRef:
-                name: siase-os-config
-            - secretRef:
-                name: siase-os-secret
+          env:
+            - name: ENVIRONMENT
+              value: "homolog"
+            - name: DB_HOST
+              valueFrom: { secretKeyRef: { name: siase-os-service-db, key: host } }
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_NAME
+              value: siase_os_db
+            - name: DB_USER
+              valueFrom: { secretKeyRef: { name: siase-os-service-db, key: username } }
+            - name: DB_PASSWORD
+              valueFrom: { secretKeyRef: { name: siase-os-service-db, key: password } }
+            - name: JWT_SECRET
+              valueFrom: { secretKeyRef: { name: siase-jwt, key: secret } }
+            - name: AWS_REGION
+              value: us-east-1
+            - name: SQS_BILLING_URL
+              valueFrom: { configMapKeyRef: { name: siase-sqs-queues, key: billing-url } }
+            - name: SQS_EXECUTION_URL
+              valueFrom: { configMapKeyRef: { name: siase-sqs-queues, key: execution-url } }
+            - name: SQS_OS_EVENTOS_URL
+              valueFrom: { configMapKeyRef: { name: siase-sqs-queues, key: os-eventos-url } }
+            - name: SQS_OS_UPDATES_URL
+              valueFrom: { configMapKeyRef: { name: siase-sqs-queues, key: os-updates-url } }
+            - name: DYNAMODB_HISTORICO_TABLE
+              valueFrom: { configMapKeyRef: { name: siase-dynamodb-tables, key: os-eventos-historico } }
           readinessProbe:
-            httpGet:
-              path: /actuator/health/readiness
-              port: 8091
-            initialDelaySeconds: 30
-            periodSeconds: 10
+            httpGet: { path: /actuator/health/readiness, port: 8081 }
+            initialDelaySeconds: 15
           livenessProbe:
-            httpGet:
-              path: /actuator/health/liveness
-              port: 8091
-            initialDelaySeconds: 60
-            periodSeconds: 15
+            httpGet: { path: /actuator/health/liveness, port: 8081 }
+            initialDelaySeconds: 30
           resources:
-            requests:
-              memory: "256Mi"
-              cpu: "250m"
-            limits:
-              memory: "512Mi"
-              cpu: "500m"
+            requests: { cpu: 100m, memory: 256Mi }
+            limits:   { cpu: 500m, memory: 512Mi }
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: siase-os-service
-  namespace: siase
 spec:
   selector:
     app: siase-os-service
   ports:
-    - name: http
-      port: 80
+    - port: 80
       targetPort: 8081
-    - name: management
-      port: 8091
-      targetPort: 8091
-  type: LoadBalancer
----
-apiVersion: autoscaling/v2
-kind: HorizontalPodAutoscaler
-metadata:
-  name: siase-os-service-hpa
-  namespace: siase
-spec:
-  scaleTargetRef:
-    apiVersion: apps/v1
-    kind: Deployment
-    name: siase-os-service
-  minReplicas: 2
-  maxReplicas: 4
-  metrics:
-    - type: Resource
-      resource:
-        name: cpu
-        target:
-          type: Utilization
-          averageUtilization: 70
