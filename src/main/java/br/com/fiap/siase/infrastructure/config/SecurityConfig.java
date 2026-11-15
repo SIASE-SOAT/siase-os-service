@@ -31,16 +31,14 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
-                .csrf(csrf -> csrf.ignoringRequestMatchers("/api/**"))
-                .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/actuator/**", "/api/swagger-ui/**", "/api/swagger-ui.html",
-                                "/api/v3/api-docs/**", "/v3/api-docs/**", "/swagger-ui/**").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/ordens/acompanhar/**").permitAll()
-                        .requestMatchers(HttpMethod.PATCH, "/api/ordens/acompanhar/**").permitAll()
-                        .anyRequest().authenticated()
-                )
-                .oauth2ResourceServer(oauth -> oauth.jwt(jwt -> {}));
+                .csrf(csrf -> csrf.requireCsrfProtectionMatcher(request -> {
+                    String uri = request.getRequestURI();
+                    String authorization = request.getHeader("Authorization");
+                    boolean bearerToken = authorization != null && authorization.startsWith("Bearer ");
+                    boolean endpointPublico = uri.startsWith("/api/ordens/acompanhar/");
+
+                    return !bearerToken && !endpointPublico;
+                }));
         return http.build();
     }
 }
