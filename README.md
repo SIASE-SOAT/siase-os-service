@@ -1,141 +1,92 @@
-# siase-os-service
+# siase-os-service — SIASE Fase 4
 
-> SIASE — Fase 4 | Microsserviço de Ordens de Serviço
+Microsserviço de **Ordens de Serviço**: ciclo de vida completo da OS, máquina de
+estados, aprovação/recusa de orçamento pelo cliente e histórico de eventos.
+Participa do **Saga coreografado via AWS SQS** com `siase-billing-service` e
+`siase-execution-service` (ver ADR-001).
 
-> README v1 (Fase 3 — Monólito): ver repositório `15SOAT`
+## Stack
 
-## Descrição
+| Tecnologia | Versão | Uso |
+|---|---|---|
+| Java | 17 | LTS |
+| Spring Boot | 3.2.4 | Web + JPA + Security (JWT resource server) |
+| PostgreSQL | 16 (RDS) | Banco relacional próprio (`siase_os_db`) |
+| DynamoDB | AWS SDK v2 | Histórico de eventos (NoSQL) |
+| AWS SQS | AWS SDK v2 | Mensageria do Saga |
+| Flyway | — | Migrations |
+| Cucumber | 7.15 | BDD |
+| JaCoCo | 0.8.11 | Cobertura mínima 80% (gate no build) |
+| Micrometer/Prometheus | — | Observabilidade (Fase 3) |
 
-Microsserviço responsável pelo ciclo de vida completo das Ordens de Serviço. Faz parte da arquitetura de microsserviços da Fase 4, comunicando-se com `siase-billing-service` e `siase-execution-service` via **AWS SQS** (Saga Coreografado).
+## Arquitetura (hexagonal)
+
+```
+infrastructure/adapters/input   → REST controller + consumer SQS
+infrastructure/adapters/output  → JPA/Postgres, SQS, DynamoDB
+application                     → use cases + ports
+domain                          → OrdemDeServico, StatusOs (máquina de estados), EventoOs
+```
 
 ## Responsabilidades
 
-- Abertura e gestão de OS
-- Controle de status (máquina de estados)
-- Aprovação/recusa de orçamento pelo cliente
-- Publicação de eventos de domínio via SQS
-- Histórico de eventos via DynamoDB
-- Consumo de eventos dos demais microsserviços
+- Abertura e gestão de OS (`POST /api/ordens`)
+- Máquina de estados: CRIADA → AGUARDANDO_APROVACAO → APROVADA → EM_EXECUCAO →
+  FINALIZADA → ENTREGUE (+ RECUSADA/CANCELADA com compensação)
+- Aprovação/recusa de orçamento (endpoints públicos por número da OS)
+- Publicação de eventos de domínio (SQS) e histórico (DynamoDB)
+- Consumo da fila `os-updates` (eventos de billing e execution)
 
-## Tecnologias
+## Filas SQS (RFC-001)
 
-| Tecnologia | Versão | Justificativa |
+| Fila | Direção | Eventos |
 |---|---|---|
-| Java | 17 | LTS, records, sealed classes |
-| Spring Boot | 3.2.4 | Framework consolidado |
-| PostgreSQL | 16 | Banco relacional para OS |
-| DynamoDB | AWS SDK v2 | Histórico de eventos (NoSQL nativo AWS) |
-| AWS SQS | AWS SDK v2 | Mensageria assíncrona para Saga |
-| Flyway | — | Migrations versionadas |
-| MapStruct | 1.5.x | Mapeamento domínio ↔ JPA |
-| Cucumber | 7.15 | Testes BDD |
-| JaCoCo | 0.8.11 | Cobertura mínima 80% |
-
-## Arquitetura
-
-```
-┌─────────────────────────────────────────────────────────┐
-│                    INFRASTRUCTURE                        │
-│  ┌──────────┐  ┌──────────────┐  ┌────────┐  ┌───────┐  │
-│  │ REST API │  │ JPA/Postgres │  │  SQS   │  │Dynamo │  │
-│  └────┬─────┘  └──────┬───────┘  └───┬────┘  └───┬───┘  │
-├───────┼───────────────┼──────────────┼────────────┼──────┤
-│       ▼               ▼              ▼            ▼      │
-│  ┌────────────────────────────────────────────────────┐  │
-│  │              APPLICATION (use cases)               │  │
-│  │  CriarOsUC  AvancarStatusOsUC  CancelarOsUC        │  │
-│  │  AprovarOrcamentoUC  ConsultarOsUC                 │  │
-│  │  AtualizarStatusPorEventoUC                        │  │
-│  └───────────────────┬────────────────────────────────┘  │
-├───────────────────────┼────────────────────────────────── ┤
-│                       ▼                                   │
-│  ┌────────────────────────────────────────────────────┐  │
-│  │                   DOMAIN                           │  │
-│  │  OrdemDeServico  ItemServico  ItemPeca  EventoOS   │  │
-│  │  StatusOS  Ports (interfaces)                      │  │
-│  └────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────┘
-```
-
-## Saga Pattern — Coreografado
-
-```
-OS criada ──► [SQS billing] ──► Billing gera orçamento
-                                       │
-                              [SQS os-updates] ──► OS: AGUARDANDO_APROVACAO
-                                       │
-Cliente aprova ──► [SQS execution] ──► Execution inicia
-                                       │
-                              [SQS os-updates] ──► OS: EM_EXECUCAO
-                                       │
-Execução finaliza ──► [SQS os-updates] ──► OS: FINALIZADA
-                                       │
-Pagamento confirmado ──► [SQS os-updates] ──► OS: ENTREGUE
-```
-
-## Filas SQS
-
-| Variável | Fila | Direção |
-|---|---|---|
-| `SQS_BILLING_URL` | siase-billing-queue | Produz |
-| `SQS_EXECUTION_URL` | siase-execution-queue | Produz |
-| `SQS_OS_EVENTOS_URL` | siase-os-eventos | Produz |
-| `SQS_OS_UPDATES_URL` | siase-os-updates-queue | Consome |
+| `siase-*-billing-queue` | produz | OS_CRIADA, OS_CANCELADA, ORCAMENTO_RECUSADO |
+| `siase-*-execution-queue` | produz | ORCAMENTO_APROVADO, OS_CANCELADA |
+| `siase-*-os-eventos` | produz | todos os eventos de domínio |
+| `siase-*-os-updates-queue` | consome | ORCAMENTO_GERADO, EXECUCAO_INICIADA/FINALIZADA, PAGAMENTO_CONFIRMADO |
 
 ## Endpoints
 
 | Método | Endpoint | Auth | Descrição |
 |---|---|---|---|
-| POST | `/api/ordens` | JWT | Criar OS |
+| POST | `/api/ordens` | JWT | Criar OS (inicia o Saga) |
 | GET | `/api/ordens` | JWT | Listar OS |
 | GET | `/api/ordens/{id}` | JWT | Buscar por ID |
-| GET | `/api/ordens/acompanhar/{numero}` | — | Acompanhar (público) |
+| GET | `/api/ordens/{id}/historico` | JWT | Histórico de eventos (DynamoDB) |
 | GET | `/api/ordens/cliente/{clienteId}` | JWT | OS por cliente |
-| PATCH | `/api/ordens/{id}/avancar` | JWT | Avançar status |
-| PATCH | `/api/ordens/{id}/cancelar` | JWT | Cancelar |
-| PATCH | `/api/ordens/acompanhar/{numero}/aprovar-orcamento` | — | Aprovar (público) |
-| PATCH | `/api/ordens/acompanhar/{numero}/recusar-orcamento` | — | Recusar (público) |
+| GET | `/api/ordens/acompanhar/{numero}` | — | Acompanhamento público |
+| PATCH | `/api/ordens/acompanhar/{numero}/aprovar-orcamento` | — | Aprovar orçamento |
+| PATCH | `/api/ordens/acompanhar/{numero}/recusar-orcamento` | — | Recusar orçamento (compensação) |
+| PATCH | `/api/ordens/{id}/cancelar` | JWT | Cancelar OS (compensação) |
 
-## Execução Local
+Swagger UI: `/api/swagger-ui.html`
+
+## Variáveis de ambiente
+
+`DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `JWT_SECRET`,
+`AWS_REGION`, `AWS_ENDPOINT` (LocalStack opcional), `SQS_BILLING_URL`,
+`SQS_EXECUTION_URL`, `SQS_OS_EVENTOS_URL`, `SQS_OS_UPDATES_URL`,
+`DYNAMODB_HISTORICO_TABLE`, `ENVIRONMENT`.
+
+## Execução local
 
 ```bash
-# Variáveis necessárias
-export DB_HOST=localhost
-export DB_PORT=5432
-export DB_NAME=siase_os_db
-export DB_USER=siase_user
-export DB_PASSWORD=siase_pass
-export JWT_SECRET=<segredo>
-export AWS_REGION=us-east-1
-export SQS_OS_EVENTOS_URL=https://sqs.us-east-1.amazonaws.com/...
-export SQS_BILLING_URL=https://sqs.us-east-1.amazonaws.com/...
-export SQS_EXECUTION_URL=https://sqs.us-east-1.amazonaws.com/...
-export SQS_OS_UPDATES_URL=https://sqs.us-east-1.amazonaws.com/...
-
-# Build e execução
 mvn clean package -DskipTests
 java -jar target/siase-os-service-1.0.0.jar
 ```
 
+Para AWS local, usar LocalStack (`AWS_ENDPOINT=http://localhost:4566`).
+
 ## Testes
 
 ```bash
-# Todos os testes (unitários + BDD)
 mvn clean verify
-
-# Relatório de cobertura
-open target/site/jacoco/index.html
-
-# Relatório BDD
-open target/cucumber-reports/report.html
+# Cobertura: target/site/jacoco/index.html (gate 80% no build)
+# BDD:       target/cucumber-reports/report.html (features/saga_os.feature)
 ```
-
-### Cobertura mínima: 80% de linhas (enforced pelo JaCoCo no build)
 
 ## Documentação
 
-- [ADR-001 — Microsserviços e Saga Coreografado](docs/adr/ADR-001-microservicos-saga-coreografado.md)
-- [ADR-002 — DynamoDB para Histórico de Eventos](docs/adr/ADR-002-dynamodb-historico-eventos.md)
-- [RFC-001 — Contratos de Eventos SQS](docs/rfc/RFC-001-saga-coreografado-contratos.md)
-- [Diagramas de Sequência v2](docs/diagramas-sequencia-v2.md)
-- Swagger UI: `http://localhost:8081/api/swagger-ui.html`
+- `docs/adr/ADR-001` — decisão do Saga coreografado
+- `docs/OBSERVABILIDADE.md` — métricas, logs JSON, correlationId

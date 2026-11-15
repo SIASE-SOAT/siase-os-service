@@ -1,97 +1,80 @@
 package br.com.fiap.siase.domain.model;
 
-import br.com.fiap.siase.domain.enums.StatusOS;
-import br.com.fiap.siase.domain.exception.BusinessException;
-import lombok.*;
-
-import java.math.BigDecimal;
-import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
-@Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
+/**
+ * Aggregate root: Ordem de Serviço.
+ */
 public class OrdemDeServico {
-    private UUID id;
-    private String numero;
-    private UUID clienteId;
-    private String clienteNome;
-    private String clienteEmail;
-    private UUID veiculoId;
-    private String veiculoPlaca;
-    private String veiculoModelo;
-    @Builder.Default
-    private StatusOS status = StatusOS.RECEBIDA;
-    private String observacoes;
-    @Builder.Default
-    private BigDecimal totalServicos = BigDecimal.ZERO;
-    @Builder.Default
-    private BigDecimal totalPecas = BigDecimal.ZERO;
-    @Builder.Default
-    private BigDecimal total = BigDecimal.ZERO;
-    private LocalDateTime dataAbertura;
-    private LocalDateTime dataFechamento;
-    @Builder.Default
-    private List<ItemServico> itensServico = new ArrayList<>();
-    @Builder.Default
-    private List<ItemPeca> itensPeca = new ArrayList<>();
-    private LocalDateTime criadoEm;
-    private LocalDateTime atualizadoEm;
 
-    public static String gerarNumero() {
-        String data = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
-        String sufixo = UUID.randomUUID().toString().substring(0, 6).toUpperCase();
-        return "OS-" + data + "-" + sufixo;
+    private final UUID id;
+    private final String numero;
+    private final UUID clienteId;
+    private final String veiculo;
+    private final String descricaoProblema;
+    private StatusOs status;
+    private final List<ItemServico> itensServico = new ArrayList<>();
+    private final List<ItemPeca> itensPeca = new ArrayList<>();
+    private final Instant criadoEm;
+    private Instant atualizadoEm;
+
+    public OrdemDeServico(UUID id, String numero, UUID clienteId, String veiculo,
+                          String descricaoProblema, StatusOs status,
+                          Instant criadoEm, Instant atualizadoEm) {
+        this.id = id;
+        this.numero = numero;
+        this.clienteId = clienteId;
+        this.veiculo = veiculo;
+        this.descricaoProblema = descricaoProblema;
+        this.status = status;
+        this.criadoEm = criadoEm;
+        this.atualizadoEm = atualizadoEm;
     }
 
-    public void recalcularTotais() {
-        this.totalServicos = itensServico.stream()
-                .map(ItemServico::getPrecoUnitario)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-        this.totalPecas = itensPeca.stream()
-                .map(ItemPeca::getSubtotal)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-        this.total = this.totalServicos.add(this.totalPecas);
+    public static OrdemDeServico criar(UUID clienteId, String veiculo, String descricaoProblema) {
+        Instant agora = Instant.now();
+        String numero = "OS-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+        return new OrdemDeServico(UUID.randomUUID(), numero, clienteId, veiculo,
+                descricaoProblema, StatusOs.CRIADA, agora, agora);
     }
 
-    public void avancarStatus() {
-        this.status = switch (this.status) {
-            case RECEBIDA -> StatusOS.EM_DIAGNOSTICO;
-            case EM_DIAGNOSTICO -> StatusOS.AGUARDANDO_APROVACAO;
-            case AGUARDANDO_APROVACAO -> StatusOS.APROVADO;
-            case APROVADO -> StatusOS.EM_EXECUCAO;
-            case EM_EXECUCAO -> StatusOS.FINALIZADA;
-            case FINALIZADA -> StatusOS.ENTREGUE;
-            case ENTREGUE -> throw new IllegalStateException("Ordem de serviço já foi entregue.");
-            case CANCELADA -> throw new IllegalStateException("Ordem de serviço cancelada não pode ser avançada.");
-        };
-        if (this.status == StatusOS.ENTREGUE) {
-            this.dataFechamento = LocalDateTime.now();
+    public void transicionarPara(StatusOs destino) {
+        if (!status.podeTransicionarPara(destino)) {
+            throw new TransicaoStatusInvalidaException(
+                    "Transição inválida: " + status + " -> " + destino);
         }
+        this.status = destino;
+        this.atualizadoEm = Instant.now();
     }
 
     public void cancelar() {
-        if (this.status == StatusOS.ENTREGUE)
-            throw new BusinessException("Ordem de serviço já entregue não pode ser cancelada.");
-        if (this.status == StatusOS.CANCELADA)
-            throw new BusinessException("Ordem de serviço já está cancelada.");
-        if (this.status == StatusOS.EM_EXECUCAO || this.status == StatusOS.FINALIZADA)
-            throw new BusinessException("Ordem de serviço em execução ou finalizada não pode ser cancelada.");
-        this.status = StatusOS.CANCELADA;
-        this.dataFechamento = LocalDateTime.now();
+        transicionarPara(StatusOs.CANCELADA);
     }
 
-    public void aprovarOrcamento() {
-        if (this.status != StatusOS.AGUARDANDO_APROVACAO)
-            throw new BusinessException("OS não está aguardando aprovação. Status atual: " + this.status.getDescricao());
-        this.status = StatusOS.APROVADO;
+    public void adicionarItemServico(ItemServico item) {
+        itensServico.add(item);
     }
 
-    public void recusarOrcamento() {
-        if (this.status != StatusOS.AGUARDANDO_APROVACAO)
-            throw new BusinessException("OS não está aguardando aprovação. Status atual: " + this.status.getDescricao());
-        this.cancelar();
+    public void adicionarItemPeca(ItemPeca item) {
+        itensPeca.add(item);
+    }
+
+    public UUID getId() { return id; }
+    public String getNumero() { return numero; }
+    public UUID getClienteId() { return clienteId; }
+    public String getVeiculo() { return veiculo; }
+    public String getDescricaoProblema() { return descricaoProblema; }
+    public StatusOs getStatus() { return status; }
+    public List<ItemServico> getItensServico() { return List.copyOf(itensServico); }
+    public List<ItemPeca> getItensPeca() { return List.copyOf(itensPeca); }
+    public Instant getCriadoEm() { return criadoEm; }
+    public Instant getAtualizadoEm() { return atualizadoEm; }
+
+    public void restaurarItens(List<ItemServico> servicos, List<ItemPeca> pecas) {
+        itensServico.addAll(servicos);
+        itensPeca.addAll(pecas);
     }
 }

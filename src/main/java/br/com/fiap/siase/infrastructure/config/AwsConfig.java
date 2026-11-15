@@ -1,5 +1,7 @@
 package br.com.fiap.siase.infrastructure.config;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -8,25 +10,36 @@ import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.sqs.SqsClient;
 
+import java.net.URI;
+import java.util.Optional;
+
 @Configuration
 public class AwsConfig {
 
-    @Value("${aws.region:us-east-1}")
-    private String region;
-
     @Bean
-    public SqsClient sqsClient() {
-        return SqsClient.builder()
-                .region(Region.of(region))
-                .credentialsProvider(DefaultCredentialsProvider.create())
-                .build();
+    public ObjectMapper objectMapper() {
+        return new ObjectMapper().registerModule(new JavaTimeModule());
     }
 
     @Bean
-    public DynamoDbClient dynamoDbClient() {
-        return DynamoDbClient.builder()
+    public SqsClient sqsClient(@Value("${app.aws.region}") String region,
+                               @Value("${app.aws.endpoint:}") String endpoint) {
+        var builder = SqsClient.builder()
                 .region(Region.of(region))
-                .credentialsProvider(DefaultCredentialsProvider.create())
-                .build();
+                .credentialsProvider(DefaultCredentialsProvider.create());
+        Optional.ofNullable(endpoint).filter(e -> !e.isBlank())
+                .ifPresent(e -> builder.endpointOverride(URI.create(e)));
+        return builder.build();
+    }
+
+    @Bean
+    public DynamoDbClient dynamoDbClient(@Value("${app.aws.region}") String region,
+                                         @Value("${app.aws.endpoint:}") String endpoint) {
+        var builder = DynamoDbClient.builder()
+                .region(Region.of(region))
+                .credentialsProvider(DefaultCredentialsProvider.create());
+        Optional.ofNullable(endpoint).filter(e -> !e.isBlank())
+                .ifPresent(e -> builder.endpointOverride(URI.create(e)));
+        return builder.build();
     }
 }
