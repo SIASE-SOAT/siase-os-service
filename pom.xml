@@ -13,7 +13,7 @@
 
     <groupId>br.com.fiap</groupId>
     <artifactId>siase-os-service</artifactId>
-    <version>1.0.0</version>
+    <version>1.0.1</version>
     <packaging>jar</packaging>
     <name>SIASE - OS Service</name>
     <description>Microsserviço de Ordens de Serviço - Fase 4</description>
