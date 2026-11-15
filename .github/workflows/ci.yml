@@ -130,7 +130,7 @@ jobs:
 
       - name: Diagnosticar conta e cluster AWS
         env:
-          CLUSTER_NAME: ${{ secrets.EKS_CLUSTER_NAME }}
+          CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME }}
         run: |
           set -euo pipefail
           echo "Cluster configurado: [$CLUSTER_NAME]"
@@ -147,8 +147,8 @@ jobs:
 
       - name: Configurar EKS e secrets do servico
         env:
-          CLUSTER_NAME: ${{ secrets.EKS_CLUSTER_NAME }}
-          NAMESPACE: ${{ secrets.K8S_NAMESPACE_PROD }}
+          CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME }}
+          NAMESPACE: ${{ vars.K8S_NAMESPACE_PROD }}
           REGISTRY: ${{ steps.ecr.outputs.registry }}
         run: |
           set -euo pipefail
