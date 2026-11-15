@@ -1,22 +1,22 @@
 package br.com.fiap.siase.infrastructure.config;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.beans.factory.annotation.Value;
 
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 
 /**
  * JWT HS256 compartilhado com a auth-lambda da Fase 3 (mesmo JWT_SECRET).
- * Endpoints de acompanhamento/aprovação por número da OS são públicos (cliente).
+ * O acompanhamento da OS por número é público para o cliente.
  */
 @Configuration
 @EnableWebSecurity
@@ -29,16 +29,19 @@ public class SecurityConfig {
     }
 
     @Bean
+    @SuppressWarnings("java:S4502")
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
-                .csrf(csrf -> csrf.requireCsrfProtectionMatcher(request -> {
-                    String uri = request.getRequestURI();
-                    String authorization = request.getHeader("Authorization");
-                    boolean bearerToken = authorization != null && authorization.startsWith("Bearer ");
-                    boolean endpointPublico = uri.startsWith("/api/ordens/acompanhar/");
-
-                    return !bearerToken && !endpointPublico;
-                }));
+                .csrf(AbstractHttpConfigurer::disable)
+                .sessionManagement(session ->
+                        session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .authorizeHttpRequests(auth -> auth
+                        .requestMatchers("/actuator/health", "/actuator/health/**",
+                                "/api/swagger-ui/**", "/api/swagger-ui.html",
+                                "/api/v3/api-docs/**", "/v3/api-docs/**", "/swagger-ui/**").permitAll()
+                        .requestMatchers("/api/ordens/acompanhar/**").permitAll()
+                        .anyRequest().authenticated())
+                .oauth2ResourceServer(oauth -> oauth.jwt(jwt -> {}));
         return http.build();
     }
 }
