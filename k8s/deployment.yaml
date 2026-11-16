@@ -5,7 +5,6 @@ metadata:
   labels:
     app: siase-os-service
 spec:
-  type: LoadBalancer
   replicas: 2
   selector:
     matchLabels:
@@ -69,6 +68,7 @@ kind: Service
 metadata:
   name: siase-os-service
 spec:
+  type: LoadBalancer
   selector:
     app: siase-os-service
   ports:
