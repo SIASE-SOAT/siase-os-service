@@ -1,11 +1,5 @@
 package br.com.fiap.siase.infrastructure.adapters.input.rest;
 
-import br.com.fiap.siase.application.usecase.AprovarOrcamentoUseCase;
-import br.com.fiap.siase.application.usecase.CancelarOsUseCase;
-import br.com.fiap.siase.application.usecase.ConsultarOsUseCase;
-import br.com.fiap.siase.application.usecase.CriarOsUseCase;
-import br.com.fiap.siase.infrastructure.adapters.input.rest.dto.CriarOsRequest;
-import br.com.fiap.siase.infrastructure.adapters.input.rest.dto.OsResponse;
 import br.com.fiap.siase.application.usecase.*;
 import br.com.fiap.siase.domain.model.EventoOs;
 import br.com.fiap.siase.domain.model.OrdemDeServico;
@@ -39,10 +33,11 @@ public class OsController {
   }
 
   @PostMapping
-  @Operation(summary = "Criar OS (inicia o Saga: publica OS_CRIADA)")
+  @Operation(summary = "Criar OS com valor opcional (inicia o Saga: publica OS_CRIADA)")
   public ResponseEntity<OsResponse> criar(@Valid @RequestBody CriarOsRequest request) {
-    OrdemDeServico os = criar.executar(request.clienteId(), request.veiculo(),
-            request.descricaoProblema());
+    OrdemDeServico os = criar.executar(request.clienteId(), request.clienteNome(), request.veiculo(),
+            request.descricaoProblema(), request.valorOrcamento(),
+            request.servicosDominio(), request.pecasDominio());
     return ResponseEntity.status(HttpStatus.CREATED).body(OsResponse.de(os));
   }
 
