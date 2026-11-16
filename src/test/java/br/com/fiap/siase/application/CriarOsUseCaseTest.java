@@ -5,11 +5,14 @@ import br.com.fiap.siase.application.ports.HistoricoEventoPort;
 import br.com.fiap.siase.application.ports.OsRepositoryPort;
 import br.com.fiap.siase.application.usecase.CriarOsUseCase;
 import br.com.fiap.siase.domain.model.EventoOs;
+import br.com.fiap.siase.domain.model.ItemPeca;
+import br.com.fiap.siase.domain.model.ItemServico;
 import br.com.fiap.siase.domain.model.OrdemDeServico;
 import br.com.fiap.siase.domain.model.StatusOs;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 
+import java.math.BigDecimal;
 import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -44,6 +47,41 @@ public class CriarOsUseCaseTest {
     public List<EventoOs> historicoDaOs(UUID osId) {
       return eventos.stream().filter(e -> e.osId().equals(osId)).toList();
     }
+  }
+
+  @Test
+  void valorOrcamentoEPublicadoNoEventoOsCriada() {
+    var repo = new RepoMemoria();
+    var pub = new PublicadorMemoria();
+    var hist = new HistoricoMemoria();
+    var uc = new CriarOsUseCase(repo, pub, hist, new SimpleMeterRegistry());
+
+    OrdemDeServico os = uc.executar(UUID.randomUUID(), "ABC-1234", "Freios",
+            new BigDecimal("480.00"));
+
+    assertEquals(new BigDecimal("480.00"), os.getValorOrcamento());
+    assertTrue(hist.historicoDaOs(os.getId()).get(0).payload().contains("480.00"));
+  }
+
+  @Test
+  void dadosDaFase3SaoPreservadosNoDominioENoEvento() {
+    var repo = new RepoMemoria();
+    var pub = new PublicadorMemoria();
+    var hist = new HistoricoMemoria();
+    var uc = new CriarOsUseCase(repo, pub, hist, new SimpleMeterRegistry());
+
+    OrdemDeServico os = uc.executar(UUID.randomUUID(), "Maria Silva", "ABC-1234",
+            "Revisão", new BigDecimal("480.00"),
+            List.of(new ItemServico("Troca de óleo", new BigDecimal("120.00"))),
+            List.of(new ItemPeca("Filtro de óleo", 1, new BigDecimal("45.00"))));
+
+    assertEquals("Maria Silva", os.getClienteNome());
+    assertEquals(1, os.getItensServico().size());
+    assertEquals(1, os.getItensPeca().size());
+    String payload = hist.historicoDaOs(os.getId()).get(0).payload();
+    assertTrue(payload.contains("Maria Silva"));
+    assertTrue(payload.contains("Troca de óleo"));
+    assertTrue(payload.contains("Filtro de óleo"));
   }
 
   @Test
