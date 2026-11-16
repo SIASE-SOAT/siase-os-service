@@ -5,6 +5,7 @@ metadata:
   labels:
     app: siase-os-service
 spec:
+  type: LoadBalancer
   replicas: 2
   selector:
     matchLabels:
