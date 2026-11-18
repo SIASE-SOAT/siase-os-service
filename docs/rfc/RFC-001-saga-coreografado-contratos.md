@@ -1,7 +1,7 @@
 # RFC-001 — Fluxo Saga Coreografado entre Microsserviços
 
 **Status:** Aprovado
-**Data:** 2025-01
+**Data:** 2026-11
 **Autores:** Time SIASE
 
 ## Resumo
