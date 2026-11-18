@@ -1,7 +1,5 @@
 # Diagramas de Sequência — v2 (Fase 4 — Microsserviços)
 
-> v1 (Fase 3 — Monólito Hexagonal): ver [diagramas-sequencia-v1.md](diagramas-sequencia-v1.md)
-
 ---
 
 ## Fluxo Completo de OS — Saga Coreografado
