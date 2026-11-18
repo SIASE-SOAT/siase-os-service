@@ -32,7 +32,7 @@ domain                          → OrdemDeServico, StatusOs (máquina de estado
 
 - Abertura e gestão de OS (`POST /api/ordens`)
 - Máquina de estados: CRIADA → AGUARDANDO_APROVACAO → APROVADA → EM_EXECUCAO →
-  FINALIZADA → ENTREGUE (+ RECUSADA/CANCELADA com compensação)
+  FINALIZADA → AGUARDANDO_PAGAMENTO → ENTREGUE (+ RECUSADA/CANCELADA com compensação)
 - Aprovação/recusa de orçamento (endpoints públicos por número da OS)
 - Publicação de eventos de domínio (SQS) e histórico (DynamoDB)
 - Consumo da fila `os-updates` (eventos de billing e execution)
@@ -69,7 +69,9 @@ Swagger UI: `/api/swagger-ui.html`
 `SQS_EXECUTION_URL`, `SQS_OS_EVENTOS_URL`, `SQS_OS_UPDATES_URL`,
 `DYNAMODB_HISTORICO_TABLE`, `ENVIRONMENT`.
 
-## Execução local
+## Porta
+
+**8081** (management/actuator também em 8081 via `/actuator`)
 
 ```bash
 mvn clean package -DskipTests
@@ -88,5 +90,7 @@ mvn clean verify
 
 ## Documentação
 
-- `docs/adr/ADR-001` — decisão do Saga coreografado
-- `docs/OBSERVABILIDADE.md` — métricas, logs JSON, correlationId
+- [ADR-001 — Separação em Microsserviços e Saga Coreografado](docs/adr/ADR-001-microservicos-saga-coreografado.md)
+- [ADR-002 — DynamoDB como Banco NoSQL para Histórico de Eventos](docs/adr/ADR-002-dynamodb-historico-eventos.md)
+- [RFC-001 — Fluxo Saga Coreografado entre Microsserviços](docs/rfc/RFC-001-saga-coreografado-contratos.md)
+- [Diagramas de Sequência v2 (Fase 4)](docs/diagramas-sequencia-v2.md)
