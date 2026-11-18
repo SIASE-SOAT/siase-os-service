@@ -1,7 +1,7 @@
 # ADR-001 — Separação em Microsserviços e Saga Coreografado
 
 **Status:** Aceito  
-**Data:** 2025-01  
+**Data:** 2026-11  
 **Contexto:** Fase 4 — Evolução para Microsserviços
 
 ## Contexto
@@ -14,14 +14,13 @@ Separar a aplicação em 3 microsserviços independentes:
 
 | Serviço | Responsabilidade | Banco SQL | Banco NoSQL |
 |---|---|---|---|
-| **siase-os-service** | Ciclo de vida das OS | RDS PostgreSQL | DynamoDB (histórico de eventos) |
-| **siase-billing-service** | Orçamentos e pagamentos (Mercado Pago) | RDS PostgreSQL | — |
-| **siase-execution-service** | Fila e execução de serviços | RDS PostgreSQL | DynamoDB (estado de execução) |
+| **siase-os-service** | Ciclo de vida das OS (porta 8081) | RDS PostgreSQL (`siase_os_db`) | DynamoDB (histórico de eventos) |
+| **siase-billing-service** | Orçamentos e pagamentos (Mercado Pago Pix) (porta 8082) | RDS PostgreSQL (`siase_billing_db`) | — |
+| **siase-execution-service** | Fila e execução de serviços (porta 8083) | RDS PostgreSQL (`siase_exec_db`) | DynamoDB (fila em tempo real) |
 
 ## Comunicação
 
-- **REST síncrono**: consultas diretas entre serviços quando necessário (ex: billing consulta OS)
-- **SQS assíncrono**: todos os eventos de mudança de estado são publicados em filas SQS
+- **SQS assíncrono**: todos os eventos de mudança de estado são publicados em filas SQS. Nenhum serviço chama diretamente o banco ou a API REST de outro — a atualização de estado ocorre exclusivamente via consumo de eventos.
 
 ## Saga Pattern — Coreografado
 
@@ -39,6 +38,7 @@ Cliente aprova → [SQS execution] → Execution inicia fila
 Execução iniciada → [SQS os-updates] → OS avança para EM_EXECUCAO
 Execução finalizada → [SQS os-updates] → OS avança para FINALIZADA
 Pagamento confirmado → [SQS os-updates] → OS avança para ENTREGUE
+  (transição possível de FINALIZADA ou AGUARDANDO_PAGAMENTO → ENTREGUE)
 ```
 
 ### Rollback (compensação)

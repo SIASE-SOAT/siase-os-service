@@ -1,7 +1,7 @@
 # ADR-002 — DynamoDB como Banco NoSQL para Histórico de Eventos
 
 **Status:** Aceito  
-**Data:** 2025-01  
+**Data:** 2026  
 **Contexto:** Fase 4 — Escolha de banco NoSQL nativo AWS
 
 ## Contexto
