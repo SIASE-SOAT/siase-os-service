@@ -1,7 +1,7 @@
 # ADR-001 — Separação em Microsserviços e Saga Coreografado
 
 **Status:** Aceito  
-**Data:** 2025-01  
+**Data:** 2026-11  
 **Contexto:** Fase 4 — Evolução para Microsserviços
 
 ## Contexto
